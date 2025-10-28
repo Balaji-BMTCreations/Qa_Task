@@ -1,0 +1,222 @@
+name: API Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'tests/api/**'
+      - '.github/workflows/api-tests.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'tests/api/**'
+  workflow_dispatch:
+  schedule:
+    # Run daily at 3 AM UTC
+    - cron: '0 3 * * *'
+
+jobs:
+  test:
+    name: API Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.8', '3.10', '3.11']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: tests/api/requirements.txt
+      
+      - name: Install dependencies
+        working-directory: tests/api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run pytest
+        working-directory: tests/api
+        run: |
+          pytest -v \
+            --html=report.html \
+            --self-contained-html \
+            --json-report \
+            --json-report-file=results.json \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=html
+        env:
+          CI: true
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: api-test-results-python-${{ matrix.python-version }}
+          path: |
+            tests/api/report.html
+            tests/api/results.json
+          retention-days: 7
+      
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: coverage-python-${{ matrix.python-version }}
+          path: tests/api/htmlcov/
+          retention-days: 7
+      
+      - name: Generate test summary
+        if: always()
+        working-directory: tests/api
+        run: |
+          python -c "
+          import json
+          with open('results.json') as f:
+              data = json.load(f)
+          
+          print('## 🧪 API Test Results')
+          print('')
+          print(f'- **Total Tests:** {data[\"summary\"][\"total\"]}')
+          print(f'- **Passed:** ✅ {data[\"summary\"][\"passed\"]}')
+          print(f'- **Failed:** ❌ {data[\"summary\"].get(\"failed\", 0)}')
+          print(f'- **Duration:** {data[\"duration\"]:.2f}s')
+          " >> $GITHUB_STEP_SUMMARY
+      
+      - name: Comment PR with results
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request' && always()
+        with:
+          script: |
+            const fs = require('fs');
+            const resultsPath = 'tests/api/results.json';
+            
+            if (fs.existsSync(resultsPath)) {
+              const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+              const summary = results.summary;
+              
+              const comment = `## 🧪 API Test Results - Python ${{ matrix.python-version }}
+              
+              - **Total Tests:** ${summary.total}
+              - **Passed:** ✅ ${summary.passed}
+              - **Failed:** ❌ ${summary.failed || 0}
+              - **Skipped:** ⊘ ${summary.skipped || 0}
+              - **Duration:** ${results.duration.toFixed(2)}s
+              - **Pass Rate:** ${((summary.passed/summary.total)*100).toFixed(1)}%
+              
+              [View full report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+
+  smoke-tests:
+    name: API Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        working-directory: tests/api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run smoke tests only
+        working-directory: tests/api
+        run: pytest -v -m smoke
+      
+      - name: Check API health
+        run: |
+          echo "## 🏥 API Health Checks" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check reqres.in
+          status=$(curl -s -o /dev/null -w "%{http_code}" https://reqres.in/api/users/1)
+          echo "- reqres.in: $status" >> $GITHUB_STEP_SUMMARY
+          
+          # Check JSONPlaceholder
+          status=$(curl -s -o /dev/null -w "%{http_code}" https://jsonplaceholder.typicode.com/posts/1)
+          echo "- JSONPlaceholder: $status" >> $GITHUB_STEP_SUMMARY
+          
+          # Check httpbin
+          status=$(curl -s -o /dev/null -w "%{http_code}" https://httpbin.org/get)
+          echo "- httpbin.org: $status" >> $GITHUB_STEP_SUMMARY
+
+  contract-validation:
+    name: API Contract Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        working-directory: tests/api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run schema validation tests
+        working-directory: tests/api
+        run: pytest -v -m schema
+      
+      - name: Upload schema validation results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: schema-validation-results
+          path: tests/api/report.html
+          retention-days: 7
+
+  summary:
+    name: API Test Summary
+    runs-on: ubuntu-latest
+    needs: [test, smoke-tests, contract-validation]
+    if: always()
+    
+    steps:
+      - name: Check all test results
+        run: |
+          echo "## 🧪 API Test Suite Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All test suites completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Full Test Suite: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Smoke Tests: ${{ needs.smoke-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Contract Validation: ${{ needs.contract-validation.result }}" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Fail if any critical tests failed
+        if: needs.smoke-tests.result == 'failure'
+        run: |
+          echo "❌ Smoke tests failed - blocking deployment"
+          exit 1

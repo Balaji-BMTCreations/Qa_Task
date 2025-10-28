@@ -1,0 +1,116 @@
+# QA Portfolio - Git Ignore
+
+# Node.js / Playwright
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Playwright artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+.playwright/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+*.html
+*.json
+report.html
+results.json
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+*.log
+
+# Test artifacts
+screenshots/
+videos/
+traces/
+*.mp4
+*.webm
+*.zip
+
+# k6 outputs
+summary.json
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Logs
+logs/
+*.log
+
+# CI/CD
+.github/credentials/
+secrets/
+
+# Editor backup files
+*~
+*.bak
+*.swp
+
+# Mac
+.AppleDouble
+.LSOverride
+Icon
+
+# Windows
+desktop.ini
+$RECYCLE.BIN/
+
+# Lighthhouse
+.lighthouseci/

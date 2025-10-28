@@ -1,0 +1,202 @@
+name: Performance Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run weekly on Sunday at 3 AM UTC
+    - cron: '0 3 * * 0'
+
+jobs:
+  performance:
+    name: k6 Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+      
+      - name: Run k6 load test
+        working-directory: performance
+        run: |
+          k6 run --out json=results.json load-test.js
+      
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: performance-results
+          path: performance/results.json
+          retention-days: 30
+      
+      - name: Parse and display results
+        if: always()
+        working-directory: performance
+        run: |
+          echo "## 📊 Performance Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract key metrics from results.json
+          python3 << 'EOF'
+          import json
+          import sys
+          
+          try:
+              with open('results.json') as f:
+                  lines = f.readlines()
+                  metrics = {}
+                  
+                  for line in lines:
+                      data = json.loads(line)
+                      if data.get('type') == 'Point':
+                          metric_name = data.get('metric')
+                          value = data.get('data', {}).get('value', 0)
+                          
+                          if metric_name not in metrics:
+                              metrics[metric_name] = []
+                          metrics[metric_name].append(value)
+                  
+                  # Calculate summary
+                  if 'http_req_duration' in metrics:
+                      durations = sorted(metrics['http_req_duration'])
+                      count = len(durations)
+                      avg = sum(durations) / count
+                      p95_idx = int(count * 0.95)
+                      p99_idx = int(count * 0.99)
+                      
+                      print(f"- **Total Requests:** {count}")
+                      print(f"- **Avg Response Time:** {avg:.2f}ms")
+                      print(f"- **p95 Response Time:** {durations[p95_idx]:.2f}ms")
+                      print(f"- **p99 Response Time:** {durations[p99_idx]:.2f}ms")
+                      
+                      # Check SLOs
+                      print("")
+                      print("### SLO Compliance")
+                      print(f"- {'✅' if durations[p95_idx] < 500 else '❌'} p95 < 500ms")
+                      print(f"- {'✅' if durations[p99_idx] < 1000 else '❌'} p99 < 1000ms")
+                  else:
+                      print("No metrics found in results")
+                      
+          except Exception as e:
+              print(f"Error parsing results: {e}")
+              sys.exit(1)
+          EOF
+          
+          cat $GITHUB_STEP_SUMMARY
+      
+      - name: Compare with baseline
+        if: always()
+        run: |
+          # This would compare with stored baseline
+          echo "📈 Performance trend analysis would go here"
+          echo "Baseline comparison requires historical data storage"
+      
+      - name: Fail on SLO violation
+        if: always()
+        working-directory: performance
+        run: |
+          # Check if SLOs are met
+          python3 << 'EOF'
+          import json
+          import sys
+          
+          try:
+              with open('results.json') as f:
+                  lines = f.readlines()
+                  durations = []
+                  
+                  for line in lines:
+                      data = json.loads(line)
+                      if data.get('type') == 'Point' and data.get('metric') == 'http_req_duration':
+                          durations.append(data.get('data', {}).get('value', 0))
+                  
+                  if durations:
+                      durations = sorted(durations)
+                      p95 = durations[int(len(durations) * 0.95)]
+                      p99 = durations[int(len(durations) * 0.99)]
+                      
+                      if p95 > 500 or p99 > 1000:
+                          print("❌ SLO violation detected!")
+                          print(f"p95: {p95:.2f}ms (threshold: 500ms)")
+                          print(f"p99: {p99:.2f}ms (threshold: 1000ms)")
+                          sys.exit(1)
+                      else:
+                          print("✅ All SLOs met")
+                  else:
+                      print("⚠️ No performance data collected")
+                      sys.exit(1)
+                      
+          except Exception as e:
+              print(f"Error checking SLOs: {e}")
+              sys.exit(1)
+          EOF
+
+  lighthouse:
+    name: Lighthouse Performance Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli@0.12.x
+      
+      - name: Run Lighthouse
+        run: |
+          lhci autorun \
+            --collect.url="https://www.saucedemo.com/" \
+            --collect.numberOfRuns=3 \
+            --upload.target=temporary-public-storage
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+      
+      - name: Parse Lighthouse results
+        if: always()
+        run: |
+          echo "## 🏠 Lighthouse Performance Audit" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Lighthouse report generated and uploaded" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Core Web Vitals" >> $GITHUB_STEP_SUMMARY
+          echo "- LCP: Largest Contentful Paint" >> $GITHUB_STEP_SUMMARY
+          echo "- FID: First Input Delay" >> $GITHUB_STEP_SUMMARY
+          echo "- CLS: Cumulative Layout Shift" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/
+          retention-days: 30
+
+  summary:
+    name: Performance Summary
+    runs-on: ubuntu-latest
+    needs: [performance, lighthouse]
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## 📊 Performance Testing Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- k6 Load Tests: ${{ needs.performance.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Lighthouse Audit: ${{ needs.lighthouse.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Performance results archived for 30 days" >> $GITHUB_STEP_SUMMARY
