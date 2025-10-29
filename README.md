@@ -169,9 +169,9 @@ k6 run load-test.js         # Run load test (safe 1 RPS for 60s)
 
 ## Contact & Submission
 
-Prepared for: [Company Name] - Senior QA Engineer Position  
-Date: October 28, 2025  
-Repository: [GitHub URL]
+Prepared for: **Wand Synthesis AI Inc** - Senior QA Engineer Position  
+Date: October 29, 2025  
+Repository: https://github.com/Balaji-BMTCreations/Qa_Task.git
 
 ---
 

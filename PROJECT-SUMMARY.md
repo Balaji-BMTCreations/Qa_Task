@@ -383,6 +383,7 @@ cd performance && k6 run load-test.js
 **Repository:** https://github.com/Balaji-BMTCreations/Qa_Task.git  
 **Submitted:** October 29, 2025  
 **Candidate:** Balaji (BMT Creations)  
+**Company:** Wand Synthesis AI Inc  
 **Position:** Senior QA Engineer  
 
 ---

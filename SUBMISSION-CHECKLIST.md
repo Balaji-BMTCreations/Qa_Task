@@ -1,5 +1,8 @@
 # Submission Checklist - 24-Hour QA Take-Home
 
+**Company:** Wand Synthesis AI Inc  
+**Position:** Senior QA Engineer
+
 ## Overview
 Final verification checklist before submitting the QA take-home assignment. Ensure all deliverables meet requirements and quality standards.
 
